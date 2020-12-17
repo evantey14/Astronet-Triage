@@ -296,7 +296,7 @@ def create(tce_table, output_dir, num_shards, num_processes, get_lightcurve):
     logging.info("Finished processing %d total file shards", len(file_shards))
 
 
-def main(_)
+def main(_):
   tce_table = pd.read_csv(FLAGS.input_tce_csv_file, header=0, dtype={'tic_id': str})
   get_lightcurve = (
     lambda tic: preprocess.read_and_process_light_curve(tic, FLAGS.tess_data_dir, 'SAP_FLUX')
