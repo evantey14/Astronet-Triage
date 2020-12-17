@@ -85,6 +85,7 @@ import tensorflow as tf
 from astronet.preprocess import preprocess
 
 
+logging.set_verbosity(logging.INFO)
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
@@ -113,6 +114,11 @@ parser.add_argument(
     default=20,
     help="Number of file shards to divide the training set into.")
 
+parser.add_argument(
+    "--num_processes",
+    type=int,
+    default=1,
+    help="Number of processes to use for multiprocessing")
 
 
 def _set_float_feature(ex, tic_id, name, value):
@@ -185,8 +191,8 @@ def _standard_views(ex, tic, time, flux, period, epoc, duration, bkspace):
   return fold_num
 
 
-def _process_tce(tce, bkspace=None):
-  time, flux = preprocess.read_and_process_light_curve(tce.tic_id, FLAGS.tess_data_dir, 'SAP_FLUX')
+def _process_tce(tce, get_lightcurve, bkspace=None):
+  time, flux = get_lightcurve(tce.tic_id)
   ex = tf.train.Example()
 
   for bkspace in [0.3, 0.7, 1.5, 5.0, None]:
@@ -210,11 +216,11 @@ def _process_tce(tce, bkspace=None):
   return ex
 
 
-def _process_file_shard(tce_table, file_name):
+def _process_file_shard(tce_table, get_lightcurve, file_name):
   process_name = multiprocessing.current_process().name
   shard_name = os.path.basename(file_name)
   shard_size = len(tce_table)
-    
+
   existing = {}
   try:
     tfr = tf.data.TFRecordDataset(file_name)
@@ -233,7 +239,7 @@ def _process_file_shard(tce_table, file_name):
     for _, tce in tce_table.iterrows():
       num_processed += 1
       print("\r                                      ", end="")
-      print(f"\r[{num_processed}/{shard_size}] {tce['tic_id']}", end="")
+      print(f"\r{shard_name} [{num_processed}/{shard_size}] {tce['tic_id']}", end="")
 
       if int(tce["tic_id"]) in existing:
         print(" exists", end="")
@@ -245,7 +251,7 @@ def _process_file_shard(tce_table, file_name):
       try:
         print(" processing", end="")
         sys.stdout.flush()
-        example = _process_tce(tce)
+        example = _process_tce(tce, get_lightcurve)
       except Exception as e:
         print(f" *** error: {e}")
         num_skipped += 1
@@ -259,13 +265,8 @@ def _process_file_shard(tce_table, file_name):
   print(f"\r{shard_name}: {num_processed}/{shard_size} {num_new} new {num_skipped} bad            ")
 
 
-def main(_):
-    tf.io.gfile.makedirs(FLAGS.output_dir)
-
-    tce_table = pd.read_csv(
-        FLAGS.input_tce_csv_file,
-        header=0,
-        dtype={'tic_id': str})
+def create(tce_table, output_dir, num_shards, num_processes, get_lightcurve):
+    tf.io.gfile.makedirs(output_dir)
 
     num_tces = len(tce_table)
     logging.info("Read %d TCEs", num_tces)
@@ -273,23 +274,35 @@ def main(_):
     # Further split training TCEs into file shards.
     file_shards = []  # List of (tce_table_shard, file_name).
     boundaries = np.linspace(
-        0, len(tce_table), FLAGS.num_shards + 1).astype(np.int)
-    for i in range(FLAGS.num_shards):
+        0, len(tce_table), num_shards + 1).astype(np.int)
+    for i in range(num_shards):
       start = boundaries[i]
       end = boundaries[i + 1]
       file_shards.append((
           start,
           end,
-          os.path.join(FLAGS.output_dir, "%.5d-of-%.5d" % (i, FLAGS.num_shards))
+          os.path.join(output_dir, "%.5d-of-%.5d" % (i, num_shards))
       ))
 
     logging.info("Processing %d total file shards", len(file_shards))
-    for start, end, file_shard in file_shards:
-        _process_file_shard(tce_table[start:end], file_shard)
+    if num_processes == 1:
+        for start, end, file_shard in file_shards:
+            _process_file_shard(tce_table[start:end], get_lightcurve, file_shard)
+    else:
+        with multiprocessing.Pool(num_processes) as p:
+            p.starmap(_process_file_shard, [
+                (tce_table[start:end], get_lightcurve, shard) for start, end, shard in file_shards]
+            )
     logging.info("Finished processing %d total file shards", len(file_shards))
 
 
+def main(_)
+  tce_table = pd.read_csv(FLAGS.input_tce_csv_file, header=0, dtype={'tic_id': str})
+  get_lightcurve = (
+    lambda tic: preprocess.read_and_process_light_curve(tic, FLAGS.tess_data_dir, 'SAP_FLUX')
+  )
+  create(tce_table, FLAGS.output_dir, FLAGS.num_shards, FLAGS.num_processes, get_lightcurve)
+
 if __name__ == "__main__":
-  logging.set_verbosity(logging.INFO)
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)
