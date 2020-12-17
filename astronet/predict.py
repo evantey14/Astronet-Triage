@@ -52,9 +52,9 @@ parser.add_argument(
     help="Name of file in which predictions will be saved.")
 
 
-def predict(legacy=False):
-    model = tf.keras.models.load_model(FLAGS.model_dir)
-    config = config_util.load_config(FLAGS.model_dir)
+def predict(model_dir, data_files, output_file=None, legacy=False):
+    model = tf.keras.models.load_model(model_dir)
+    config = config_util.load_config(model_dir)
     
     if legacy:
         for f in config.inputs.features.values():
@@ -65,7 +65,7 @@ def predict(legacy=False):
                 f.shape = [l]
 
     ds = input_ds.build_dataset(
-        file_pattern=FLAGS.data_files,
+        file_pattern=data_files,
         input_config=config.inputs,
         batch_size=1,
         include_labels=False,
@@ -92,15 +92,15 @@ def predict(legacy=False):
 
     results = pd.DataFrame.from_dict(series)
     
-    if FLAGS.output_file:
-      with tf.io.gfile.GFile(FLAGS.output_file, "w") as f:
+    if output_file:
+      with tf.io.gfile.GFile(output_file, "w") as f:
         results.to_csv(f)
         
     return results, config
 
 
 def main(_):
-    predict()
+    predict(FLAGS.model_dir, FLAGS.data_files, FLAGS.output_file)
 
 
 if __name__ == "__main__":
