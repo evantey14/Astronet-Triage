@@ -102,10 +102,14 @@ def predict(model_dir, data_files, output_file=None, legacy=False):
 def load_ensemble(chkpt_root, nruns):
     checkpts = []
     for i in range(nruns):
-        model_dir = os.path.join(chkpt_root, str(i+1))
-        if not os.path.exists(model_dir):
+        parent = os.path.join(chkpt_root, str(i + 1))
+        if not os.path.exists(parent):
             break
-        checkpts.append(model_dir)
+        all_dirs = os.listdir(parent)
+        if not all_dirs:
+            break
+        d, = all_dirs
+        checkpts.append(os.path.join(parent, d))
     return checkpts
 
 def batch_predict(models_dir, data_files, nruns, **kwargs):
