@@ -28,7 +28,7 @@ from light_curve_util import tess_io
 from statsmodels.robust import scale
 
 
-def read_and_process_light_curve(tic, tess_data_dir, flux_key='KSPSAP_FLUX'):
+def read_and_process_light_curve(tic, tess_data_dir, flux_key):
   file_names = tess_io.tess_filenames(tic, tess_data_dir)
   assert file_names
   all_time, all_mag = tess_io.read_tess_light_curve(file_names, flux_key)
