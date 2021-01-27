@@ -115,36 +115,11 @@ def load_ensemble(chkpt_root, nruns):
 def batch_predict(models_dir, data_files, nruns, **kwargs):
     model_dirs = load_ensemble(models_dir, nruns)
     ensemble_preds = []
-    for model_dir in model_dirs:
+    for i, model_dir in enumerate(model_dirs):
         preds, config = predict(model_dir, data_files, **kwargs)
-        ensemble_preds.append(preds.set_index('tic_id'))
-
-    agg_preds = {}
-    for preds in ensemble_preds:
-        for tic_id in preds.index:
-            if tic_id not in agg_preds:
-                agg_preds[tic_id] = []
-            row = preds[preds.index == tic_id]
-            pred_v = row.values[0]
-            if pred_v[0] >= config.hparams.prediction_threshold:
-                agg_preds[tic_id].append('disp_E')
-            else:
-                agg_preds[tic_id].append(preds.columns[np.argmax(pred_v)])
-
-    labels = ['disp_E', 'disp_N', 'disp_J', 'disp_S', 'disp_B']
-    final_preds = []
-    for tic_id in list(agg_preds.keys()):
-        counts = {l: 0 for l in labels}
-        for e in agg_preds[tic_id]:
-            counts[e] += 1
-        maxcount = max(counts.values())
-        counts.update({
-            'tic_id': tic_id,
-            'maxcount': maxcount,
-        })
-        final_preds.append(counts)
-    final_preds = pd.DataFrame(final_preds).set_index('tic_id')
-    return final_preds
+        preds["model_no"] = i
+        ensemble_preds.append(preds)
+    return pd.concat(ensemble_preds, ignore_index=True)
 
 def main(_):
     predict(FLAGS.model_dir, FLAGS.data_files, FLAGS.output_file)
