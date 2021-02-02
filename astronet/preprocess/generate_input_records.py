@@ -216,7 +216,7 @@ def _process_tce(tce, get_lightcurve, bkspace=None):
   return ex
 
 
-def _process_file_shard(tce_table, get_lightcurve, file_name):
+def _process_file_shard(tce_table, get_lightcurve, file_name, append=False):
   process_name = multiprocessing.current_process().name
   shard_name = os.path.basename(file_name)
   shard_size = len(tce_table)
@@ -241,7 +241,7 @@ def _process_file_shard(tce_table, get_lightcurve, file_name):
       print("\r                                      ", end="")
       print(f"\r{shard_name} [{num_processed}/{shard_size}] {tce['tic_id']}", end="")
 
-      if int(tce["tic_id"]) in existing:
+      if int(tce["tic_id"]) in existing and append:
         print(" exists", end="")
         sys.stdout.flush()
         writer.write(existing[int(tce["tic_id"])])
