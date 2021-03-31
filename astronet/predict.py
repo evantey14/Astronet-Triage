@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import multiprocessing
 import os
 import sys
 
@@ -112,13 +113,23 @@ def load_ensemble(chkpt_root, nruns):
         checkpts.append(os.path.join(parent, d))
     return checkpts
 
-def batch_predict(models_dir, data_files, nruns, **kwargs):
+def batch_predict(models_dir, data_files, nruns, num_procs=1, **kwargs):
     model_dirs = load_ensemble(models_dir, nruns)
     ensemble_preds = []
-    for i, model_dir in enumerate(model_dirs):
-        preds, config = predict(model_dir, data_files, **kwargs)
-        preds["model_no"] = i
-        ensemble_preds.append(preds)
+    if num_procs == 1:
+        for model_dir in model_dirs:
+            preds, _ = predict(model_dir, data_files, **kwargs)
+            ensemble_preds.append(preds)
+    else:
+        with multiprocessing.Pool(num_procs) as pool:
+            ensemble_preds_cfgs = pool.starmap(
+                predict,
+                [(model_dir, data_files, kwargs) for model_dir in model_dirs]
+            )
+            ensemble_preds = [pred for pred, _ in ensemble_preds_cfgs]
+    for i, pred in enumerate(ensemble_preds):
+        pred["model_no"] = i
+
     return pd.concat(ensemble_preds, ignore_index=True)
 
 def main(_):
