@@ -28,12 +28,13 @@ HC_PHASE1 = 30.0 / 60.0 / 24 / 2
 HC_PHASE2 = 10.0 / 60.0 / 24 / 2
 
 
-def get_overlap(hbw, t):
+def get_overlap(hbw, t, c):
     hc = HC_PHASE1 if t < PHASE2_T else HC_PHASE2
-    return max(0, min(hbw, t + hc) - max(-hbw, t - hc))
+    bin_overlap = max(0, min(hbw, t + hc) - max(-hbw, t - hc))
+    return bin_overlap
 
 
-def new_binning(time, flux, period, num_bins, t_min, t_max, method='weighted_mean'):
+def new_binning(time, flux, period, num_bins, t_min, t_max, method='weighted_mean', trim_edges=False):
   t = time.copy()
   
   bins_left_edge, step = np.linspace(
@@ -82,14 +83,26 @@ def new_binning(time, flux, period, num_bins, t_min, t_max, method='weighted_mea
         continue
 
     if method == 'weighted_mean':
-        # get the weight of each time point within the bin
-        weight = [get_overlap(hbw, in_bin[j]) / bin_width
-                  for j in range(len(in_bin))]
-        bin_flux = np.sum(weight * f_x) / np.sum(weight)
-        f[i] = bin_flux
+        if len(in_bin) > 1:
+            weight = [get_overlap(hbw, in_bin[j], b) / bin_width
+                      for j in range(len(in_bin))]
+            f[i] = np.average(f_x, weights=weight)
+        else:
+            f[i], = f_x
     elif method == 'max':
         f[i] = np.max(f_x)
 
     s[i] = np.std(f_x)
+    
+  if trim_edges:
+      clear_bins = set()
+      for i in range(len(m)):
+        if m[i] < 1:
+            if i > 0:
+                clear_bins.add(i - 1)
+            if i < len(m) - 1:
+                clear_bins.add(i + 1)
+      for i in list(clear_bins):
+        m[i] = 0.0
 
   return f, m, s
